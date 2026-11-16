@@ -1,9 +1,9 @@
-host = ""
+host = "spc805srv"
 port = 1433
 database = ""
 auth_mode = "SqlServer"
 username = "sa"
-password = ""
+password = "Ca999999"
 trust_cert = true
 default_preview_limit = 5
 global_rules = []

@@ -98,6 +98,12 @@ fn get_dictionary() -> Result<SchemaDictionary, String> {
     SchemaDictionary::load_or_create_template().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_app_version() -> String {
+    // ดึงค่าจาก Cargo.toml อัตโนมัติด้วย Macro
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -112,6 +118,7 @@ pub fn run() {
             get_table_details,
             preview_query_data,
             compile_and_export,
+            get_app_version,
             get_dictionary
         ])
         .run(tauri::generate_context!())

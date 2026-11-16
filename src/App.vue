@@ -87,6 +87,7 @@ const isRunningPreview = ref(false);
 const exportTarget = ref<"csharp_bundle" | "csharp" | "pure_sql" | "typescript">("csharp_bundle");
 const exportedCode = ref("");
 const copied = ref(false);
+const appVersion = ref("");
 
 // ============================================================================
 // 2. Lifecycle & Database Connection
@@ -97,6 +98,9 @@ onMounted(async () => {
     config.value = saved;
     const dict = await invoke<SchemaDictionary>("get_dictionary");
     dictionary.value = dict;
+
+    const version: string = await invoke("get_app_version");
+    appVersion.value = `v${version}`;
   } catch (e) {
     console.error("Failed to load config:", e);
   }
@@ -558,7 +562,7 @@ async function copyCodeToClipboard() {
           <div class="w-2.5 h-2.5 rounded-full" :class="isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'"></div>
           <span class="font-bold text-xs tracking-wider text-slate-200">QCraft Workbench</span>
         </div>
-        <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800/50">v0.3 GUI</span>
+        <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800/50">{{ appVersion }} GUI</span>
       </div>
 
       <!-- Server & DB Selector -->

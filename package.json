@@ -1,13 +1,14 @@
 {
   "name": "qcraft-gui",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bump": "bun run bump-version.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
