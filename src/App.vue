@@ -929,15 +929,21 @@ async function copyCodeToClipboard() {
               ⚠️ ไม่พบข้อมูลที่ตรงกับเงื่อนไข (0 แถว)
             </div>
             <div v-else class="overflow-auto border border-slate-800 rounded-md">
-              <table class="w-full text-left border-collapse text-xs font-mono">
+              <table class="w-max min-w-full text-left border-collapse text-xs font-mono">
                 <thead>
                   <tr class="bg-slate-950 text-slate-300 border-b border-slate-800">
-                    <th v-for="h in previewData.headers" :key="h" class="p-2 font-semibold">{{ h }}</th>
+                    <th v-for="h in previewData.headers" :key="h" class="p-2 font-semibold whitespace-nowrap" :title="h">{{ h }}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/60">
                   <tr v-for="(row, rIdx) in previewData.rows" :key="rIdx" class="hover:bg-slate-800/40">
-                    <td v-for="(val, cIdx) in row" :key="cIdx" class="p-2" :class="val === 'NULL' ? 'text-slate-600 italic' : 'text-slate-300'">
+                    <td
+                      v-for="(val, cIdx) in row"
+                      :key="cIdx"
+                      class="preview-cell p-2 whitespace-nowrap"
+                      :title="val"
+                      :class="val === 'NULL' ? 'text-slate-600 italic' : 'text-slate-300'"
+                    >
                       {{ val }}
                     </td>
                   </tr>
