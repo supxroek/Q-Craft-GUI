@@ -44,7 +44,7 @@ const config = ref<AppConfig>({
   username: "sa",
   password: "",
   trust_cert: true,
-  default_preview_limit: 10,
+  default_preview_limit: 100,
   global_rules: [],
 });
 
@@ -68,6 +68,8 @@ interface LoadedTable {
 const loadedTables = ref<LoadedTable[]>([]);
 const ast = ref<QueryAst | null>(null);
 const columnSearch = ref("");
+const sidebarCollapsed = ref(false);
+const previewExpanded = ref(false);
 
 // Modal สำหรับเพิ่ม JOIN
 const showJoinModal = ref(false);
@@ -358,6 +360,38 @@ function removeJoin(index: number) {
 // ============================================================================
 // 5. Column Selection, Filters, Grouping & Sorting
 // ============================================================================
+function onMainAliasInput() {
+  if (!ast.value) return;
+  const main = loadedTables.value[0];
+  if (!main) return;
+  const oldAlias = main.alias;
+  const newAlias = ast.value.main_table.alias.trim();
+
+  if (ast.value.joins.length > 0 && !newAlias) {
+    ast.value.main_table.alias = oldAlias;
+    errorMsg.value = "ตารางหลักต้องมี alias เมื่อมี JOIN";
+    return;
+  }
+
+  ast.value.main_table.alias = newAlias;
+  if (oldAlias === newAlias) return;
+
+  for (const field of ast.value.select_columns) {
+    if (field.column.table_alias === oldAlias) field.column.table_alias = newAlias;
+  }
+  for (const cond of ast.value.where_conditions) {
+    if (cond.column.table_alias === oldAlias) cond.column.table_alias = newAlias;
+  }
+  for (const order of ast.value.order_by) {
+    if (order.column.table_alias === oldAlias) order.column.table_alias = newAlias;
+  }
+  for (const join of ast.value.joins) {
+    if (join.left_column.table_alias === oldAlias) join.left_column.table_alias = newAlias;
+  }
+  main.alias = newAlias;
+  refreshExportCode();
+}
+
 const allAvailableColumns = computed(() => {
   const list: {
     tableName: string;
@@ -377,7 +411,7 @@ const allAvailableColumns = computed(() => {
       list.push({
         tableName: tbl.name,
         tableAlias: tbl.alias,
-        fullName: `${tbl.alias}.${col.name}`,
+        fullName: tbl.alias ? `${tbl.alias}.${col.name}` : col.name,
         detail: col,
         note,
       });
@@ -426,6 +460,29 @@ function toggleSelectColumn(item: (typeof allAvailableColumns.value)[0]) {
       sql_data_type: item.detail.data_type,
     });
   }
+  syncGroupBy();
+  refreshExportCode();
+}
+
+function selectFilteredColumns() {
+  if (!ast.value) return;
+  for (const item of filteredColumns.value) {
+    if (!isColumnSelected(item.tableAlias, item.detail.name)) {
+      ast.value.select_columns.push({
+        column: { table_alias: item.tableAlias, column_name: item.detail.name },
+        output_alias: item.note?.suggested_alias || null,
+        aggregate: "None",
+        sql_data_type: item.detail.data_type,
+      });
+    }
+  }
+  syncGroupBy();
+  refreshExportCode();
+}
+
+function clearSelectedColumns() {
+  if (!ast.value) return;
+  ast.value.select_columns = [];
   syncGroupBy();
   refreshExportCode();
 }
@@ -555,18 +612,31 @@ async function copyCodeToClipboard() {
     <!-- ========================================== -->
     <!-- ZONE 1: Left Sidebar (Explorer & Presets)  -->
     <!-- ========================================== -->
-    <aside class="w-72 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+    <aside
+      class="bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 transition-[width] duration-200"
+      :class="sidebarCollapsed ? 'w-12' : 'w-64'"
+    >
       <!-- Header -->
-      <div class="p-3 border-b border-slate-800 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <div class="w-2.5 h-2.5 rounded-full" :class="isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'"></div>
-          <span class="font-bold text-xs tracking-wider text-slate-200">QCraft Workbench</span>
-        </div>
-        <span class="text-[10px] bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded border border-indigo-800/50">{{ appVersion }} GUI</span>
+      <div class="h-12 px-3 border-b border-slate-800 flex items-center" :class="sidebarCollapsed ? 'justify-center' : 'justify-between'">
+        <button
+          v-if="sidebarCollapsed"
+          @click="sidebarCollapsed = false"
+          title="ขยายแถบตาราง"
+          class="text-slate-400 hover:text-indigo-300 transition"
+        >
+          <TableIcon class="w-4 h-4" />
+        </button>
+        <template v-else>
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-full" :class="isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'"></div>
+            <span class="font-bold text-xs tracking-wider text-slate-200">QCraft Workbench</span>
+          </div>
+          <button @click="sidebarCollapsed = true" title="ย่อแถบตาราง" class="text-slate-500 hover:text-slate-200 text-lg leading-none px-1">‹</button>
+        </template>
       </div>
 
       <!-- Server & DB Selector -->
-      <div class="p-3 border-b border-slate-800 space-y-2">
+      <div v-if="!sidebarCollapsed" class="p-3 border-b border-slate-800 space-y-2">
         <div class="flex items-center justify-between text-xs text-slate-400">
           <span>Server: <strong class="text-slate-200">{{ config.host }}</strong></span>
           <button
@@ -591,7 +661,7 @@ async function copyCodeToClipboard() {
       </div>
 
       <!-- Search Box -->
-      <div class="p-3 border-b border-slate-800">
+      <div v-if="!sidebarCollapsed" class="p-3 border-b border-slate-800">
         <div class="relative">
           <Search class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
           <input
@@ -604,7 +674,7 @@ async function copyCodeToClipboard() {
       </div>
 
       <!-- Table List Explorer -->
-      <div class="flex-1 overflow-y-auto p-2 space-y-1">
+      <div v-if="!sidebarCollapsed" class="flex-1 overflow-y-auto p-2 space-y-1">
         <div v-if="isLoadingTables" class="text-center text-xs text-slate-500 py-4">กำลังโหลดรายชื่อตาราง...</div>
         <div
           v-for="tbl in filteredTables"
@@ -643,7 +713,11 @@ async function copyCodeToClipboard() {
       </div>
 
       <!-- Canvas Header / Query Builder Area -->
-      <div class="flex-1 border-b border-slate-800 p-4 overflow-y-auto space-y-4">
+      <div class="flex-1 min-h-0 flex">
+      <div
+        v-if="!previewExpanded"
+        class="w-[42%] min-w-90 border-r border-slate-800 p-4 overflow-y-auto space-y-4"
+      >
         
         <!-- Welcome state if no main table -->
         <div v-if="!ast" class="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
@@ -675,9 +749,18 @@ async function copyCodeToClipboard() {
             <!-- Table Flow Visualizer -->
             <div class="space-y-2 pt-1 font-mono text-xs">
               <!-- Main Table -->
-              <div class="bg-slate-950 border border-indigo-900/50 rounded p-2 flex items-center justify-between text-indigo-300">
-                <span>FROM [{{ ast.main_table.database }}].[{{ ast.main_table.schema }}].[{{ ast.main_table.name }}] AS <strong class="text-white">{{ ast.main_table.alias }}</strong></span>
-                <span class="text-[10px] bg-indigo-950 px-2 py-0.5 rounded text-indigo-400">Main Table</span>
+              <div class="bg-slate-950 border border-indigo-900/50 rounded p-2 flex items-center gap-2 text-indigo-300">
+                <span class="whitespace-nowrap">FROM [{{ ast.main_table.database }}].[{{ ast.main_table.schema }}].[{{ ast.main_table.name }}]</span>
+                <span v-if="ast.joins.length > 0" class="text-slate-500">AS</span>
+                <input
+                  v-model="ast.main_table.alias"
+                  @input="onMainAliasInput"
+                  type="text"
+                  placeholder="ไม่มี alias"
+                  title="ชื่อ alias ของตารางหลัก (ว่างได้เฉพาะเมื่อไม่มี JOIN)"
+                  class="w-24 min-w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white font-mono disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                <span class="ml-auto text-[10px] bg-indigo-950 px-2 py-0.5 rounded text-indigo-400 shrink-0">Main Table</span>
               </div>
 
               <!-- Joins -->
@@ -701,14 +784,24 @@ async function copyCodeToClipboard() {
                 <Code2 class="w-4 h-4 text-emerald-400" />
                 <span>Select Columns ({{ ast.select_columns.length }} selected)</span>
               </div>
-              <div class="relative w-48">
-                <Search class="w-3 h-3 text-slate-500 absolute left-2 top-2.5" />
-                <input
-                  v-model="columnSearch"
-                  type="text"
-                  placeholder="กรองคอลัมน์..."
-                  class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-xs pl-7 pr-2 py-1.5 rounded text-slate-200 outline-none"
-                />
+              <div class="flex items-center gap-2">
+                <button
+                  @click="selectFilteredColumns"
+                  class="text-[10px] px-2 py-1 rounded border border-slate-700 bg-slate-950 text-slate-300 hover:border-indigo-600 hover:text-indigo-300"
+                >เลือกทั้งหมด</button>
+                <button
+                  @click="clearSelectedColumns"
+                  class="text-[10px] px-2 py-1 rounded border border-slate-700 bg-slate-950 text-slate-400 hover:border-rose-800 hover:text-rose-300"
+                >ล้าง</button>
+                <div class="relative w-44">
+                  <Search class="w-3 h-3 text-slate-500 absolute left-2 top-2.5" />
+                  <input
+                    v-model="columnSearch"
+                    type="text"
+                    placeholder="กรองคอลัมน์..."
+                    class="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 text-xs pl-7 pr-2 py-1.5 rounded text-slate-200 outline-none"
+                  />
+                </div>
               </div>
             </div>
 
@@ -886,7 +979,7 @@ async function copyCodeToClipboard() {
       <!-- ========================================== -->
       <!-- ZONE 3: Bottom (Live Preview & Export)     -->
       <!-- ========================================== -->
-      <div class="h-64 bg-slate-900 border-t border-slate-800 flex flex-col shrink-0">
+      <div class="flex-1 min-w-0 bg-slate-900 flex flex-col">
         <!-- Tab Navigation Bar -->
         <div class="flex items-center justify-between bg-slate-950/80 px-4 py-2 border-b border-slate-800">
           <div class="flex items-center gap-2">
@@ -906,16 +999,25 @@ async function copyCodeToClipboard() {
             </button>
           </div>
 
-          <!-- Run Preview Action Button -->
-          <button
-            v-if="ast"
-            @click="runPreview"
-            :disabled="isRunningPreview"
-            class="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium px-3.5 py-1 rounded-md shadow transition"
-          >
-            <Play class="w-3.5 h-3.5 fill-current" />
-            {{ isRunningPreview ? "Running..." : `Run Preview (TOP ${config.default_preview_limit})` }}
-          </button>
+          <div class="flex items-center gap-2">
+            <!-- Run Preview Action Button -->
+            <button
+              v-if="ast"
+              @click="runPreview"
+              :disabled="isRunningPreview"
+              class="flex items-center gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium px-3.5 py-1.5 rounded-md shadow transition"
+            >
+              <Play class="w-3.5 h-3.5 fill-current" />
+              {{ isRunningPreview ? "กำลังรัน..." : `รันพรีวิว (TOP ${config.default_preview_limit})` }}
+            </button>
+            <button
+              @click="previewExpanded = !previewExpanded"
+              :title="previewExpanded ? 'แสดงส่วนปรับแต่ง' : 'ขยายพรีวิวและส่งออก'"
+              class="w-8 h-8 flex items-center justify-center rounded-md border border-slate-700 bg-slate-900 text-slate-400 hover:text-white hover:border-slate-600 transition"
+            >
+              <span class="text-sm leading-none">{{ previewExpanded ? '↙' : '↗' }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Tab Panels -->
@@ -928,9 +1030,9 @@ async function copyCodeToClipboard() {
             <div v-else-if="previewData.rows.length === 0" class="h-full flex items-center justify-center text-xs text-amber-400">
               ⚠️ ไม่พบข้อมูลที่ตรงกับเงื่อนไข (0 แถว)
             </div>
-            <div v-else class="overflow-auto border border-slate-800 rounded-md">
+            <div v-else class="h-full overflow-auto border border-slate-800 rounded-md">
               <table class="w-max min-w-full text-left border-collapse text-xs font-mono">
-                <thead>
+                <thead class="sticky top-0 z-10">
                   <tr class="bg-slate-950 text-slate-300 border-b border-slate-800">
                     <th v-for="h in previewData.headers" :key="h" class="p-2 font-semibold whitespace-nowrap" :title="h">{{ h }}</th>
                   </tr>
@@ -986,6 +1088,7 @@ async function copyCodeToClipboard() {
             <pre class="flex-1 bg-slate-950 border border-slate-800 p-3 rounded-md font-mono text-xs text-indigo-200 overflow-auto"><code>{{ exportedCode || "// เลือกตารางหลักและคอลัมน์เพื่อสร้างโค้ดอัตโนมัติ" }}</code></pre>
           </div>
         </div>
+      </div>
       </div>
     </main>
 

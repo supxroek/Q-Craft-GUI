@@ -1,6 +1,6 @@
 [package]
 name = "qcraft-gui"
-version = "0.3.4"
+version = "0.4.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
